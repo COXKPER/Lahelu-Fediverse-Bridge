@@ -257,46 +257,70 @@ federation.setOutboxDispatcher(
   }
 );
 
+
+/* Followers - FIX: Ditambahkan untuk collection followers */
+federation.setFollowersDispatcher(
+  "/users/{identifier}/followers",
+  async (ctx, identifier, cursor) => {
+    const username = typeof identifier === "object" ? identifier.identifier : identifier;
+
+    // Default limit
+    const limit = 50;
+    const offset = cursor ? parseInt(cursor, 10) : 0;
+
+    const rows = db.prepare(`
+      SELECT actor FROM followers
+      WHERE username=?
+      ORDER BY actor ASC
+      LIMIT ? OFFSET ?
+    `).all(username, limit, offset);
+
+    const items = rows.map(r => new URL(r.actor));
+
+    return {
+      items,
+      nextCursor: items.length === limit ? String(offset + limit) : null
+    };
+  }
+)
+.setCounter(async (ctx, identifier) => {
+  const username = typeof identifier === "object" ? identifier.identifier : identifier;
+  const row = db.prepare("SELECT COUNT(*) as c FROM followers WHERE username=?").get(username);
+  return row ? row.c : 0;
+})
+.setFirstCursor(async (ctx, identifier) => "0");
+
 /* Inbox - FIX: Safely extracting parameter username */
 federation.setInboxListeners("/users/{identifier}/inbox", "/inbox")
   .on(Follow, async (ctx, follow) => {
   try {
-    const username = ctx.parameters?.identifier 
-      || (ctx.url ? new URL(ctx.url).pathname.split("/")[2] : null);
+    const username = typeof ctx.parameters?.identifier === "object" ? ctx.parameters?.identifier.identifier : ctx.parameters?.identifier;
     if (!username) return;
 
-    const actorId = follow.actorId?.href;
+    const actorId = follow.actorId;
     if (!actorId) return;
 
-    console.log("FOLLOW from:", actorId);
+    console.log("FOLLOW from:", actorId.href);
 
     db.prepare(`
       INSERT OR IGNORE INTO followers (username, actor)
       VALUES (?, ?)
-    `).run(username, actorId);
+    `).run(username, actorId.href);
 
-    // Explicitly stringify every field — Mastodon rejects URL objects
-    const followId = follow.id instanceof URL 
-      ? follow.id.href 
-      : (typeof follow.id === "string" ? follow.id : null);
-
-    if (!followId) {
+    if (!follow.id) {
       console.error("Follow has no id, cannot send Accept");
       return;
     }
 
-    const actorUri = ctx.getActorUri(username);
-    const actorUriStr = actorUri instanceof URL ? actorUri.href : String(actorUri);
-
     const accept = new Accept({
       id: new URL(`${DOMAIN}/users/${username}/accepts/${crypto.randomUUID()}`),
-      actor: new URL(actorUriStr),
-      object: new URL(followId),
+      actor: ctx.getActorUri(username),
+      object: follow.id,
     });
 
     await ctx.sendActivity(
       { identifier: username },
-      follow.actorId,
+      actorId,
       accept
     );
 
@@ -306,7 +330,7 @@ federation.setInboxListeners("/users/{identifier}/inbox", "/inbox")
   }
 })
   .on(Undo, async (ctx, undo) => {
-    const username = ctx.parameters?.identifier || (ctx.url ? new URL(ctx.url).pathname.split("/")[2] : null);
+    const username = typeof ctx.parameters?.identifier === "object" ? ctx.parameters?.identifier.identifier : ctx.parameters?.identifier;
     if (!username) return;
     
     const object = await undo.getObject();
