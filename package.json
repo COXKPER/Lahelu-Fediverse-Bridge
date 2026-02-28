@@ -1,0 +1,25 @@
+{
+  "name": "lahelu-ap-bridge",
+  "version": "2.0.0",
+  "description": "Lahelu → Fediverse ActivityPub Bridge (Fedify)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fedify/fedify": "^2.0.2",
+    "better-sqlite3": "^9.4.0",
+    "compression": "^1.7.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "node-fetch": "^3.3.2",
+    "@fedify/express": "^2.0.2",
+    "@fedify/vocab": "^2.0.2"
+  }
+}
